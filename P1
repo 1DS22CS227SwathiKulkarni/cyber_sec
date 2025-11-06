@@ -1,0 +1,289 @@
+Got it — below is a **concise, exam-ready step-by-step checklist** you can follow on your laptop to complete **“Packet Filtering using Wireshark”** (Part A) and **“Capturing Login Credentials over HTTP”** (Part B) from your lab handout. I’ve translated the PDF steps into exact commands/keystrokes and added quick troubleshooting tips and short viva answers so you’re ready for both the practical and oral. (I used your uploaded lab sheet as the source.) 
+
+---
+
+# Before you start (quick checklist)
+
+1. Laptop with VirtualBox installed.
+2. Kali Linux VM available in VirtualBox (snapshot recommended).
+3. Wireshark installed in Kali (usually preinstalled).
+4. Ensure you have sudo access in the VM.
+5. Save this screen or print it — follow step by step during the lab. 
+
+---
+
+# PART A — Packet capture & filtering (step-by-step)
+
+### 1) Configure VirtualBox network for packet capture (on **host** VirtualBox)
+
+1. Open **VirtualBox** → select your **Kali VM** → **Settings → Network**.
+2. Adapter 1:
+
+   * **Attached to:** **Bridged Adapter**
+   * **Promiscuous Mode:** **Allow All**
+   * **Cable Connected:** checked (✓)
+3. Click **OK** and close settings.
+
+> Why: Bridged + Promiscuous lets the VM see traffic on the physical network. 
+
+---
+
+### 2) Start Kali Linux VM
+
+* Boot the VM normally from VirtualBox.
+
+---
+
+### 3) Open Wireshark
+
+* In Kali terminal:
+
+  ```bash
+  sudo wireshark
+  ```
+
+  (or open Wireshark from the applications menu as root)
+* **Security note:** running GUI apps as root has risks. For the lab this is acceptable, but in real environments prefer `dumpcap` permissions instead.
+
+---
+
+### 4) Choose network interface and start capture
+
+* In Wireshark, select the interface that corresponds to the VM’s network:
+
+  * For bridged: likely **eth0** (or `ens33`, `enp0s3`) — select it and click the shark-fin to start capturing.
+* **Generate traffic** while capturing: open websites, `ping`, or `curl` from the Kali terminal to create packets.
+
+---
+
+### 5) Use useful **display filters** while analyzing
+
+* Examples (type them in the display filter box and press Enter):
+
+  * DNS: `dns`
+  * HTTPS / TLS: `tls`
+  * Specific IP: `ip.addr == 18.161.216.37`
+  * TCP port 443: `tcp.port == 443`
+* Capture filters (set before starting capture) are different — e.g., to capture only TCP port 80: `tcp port 80`.
+
+> Display filters are applied to already captured traffic; capture filters limit what is recorded. 
+
+---
+
+### 6) Inspect a packet
+
+* Click any packet → expand layers on the middle pane:
+
+  * **Ethernet**: src/dst MAC
+  * **Internet (IP)**: src/dst IP
+  * **TCP/UDP**: ports, flags (SYN/ACK)
+  * **Application**: HTTP, DNS query, TLS handshake details
+* To view full conversation: Right-click → **Follow** → **TCP Stream**.
+
+---
+
+### 7) Stop capture and save file
+
+* Click the **red square** (Stop).
+* **File → Save As…** → save as `.pcap` or `.pcapng` (e.g., `lab1_capture.pcap`) — submit this file with your lab report. 
+
+---
+
+# PART B — Capturing HTTP login credentials (step-by-step)
+
+> This part demonstrates why HTTP is insecure — POST data is plain text.
+
+### 1) Start Apache web server on Kali
+
+```bash
+sudo service apache2 start
+# check status
+sudo service apache2 status
+```
+
+---
+
+### 2) Create the test web folder
+
+```bash
+sudo mkdir -p /var/www/html/testlogin
+cd /var/www/html/testlogin
+```
+
+---
+
+### 3) Create `login.html`
+
+* Command:
+
+```bash
+sudo nano /var/www/html/testlogin/login.html
+```
+
+* Paste the following (exact):
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Login Page</title>
+</head>
+<body>
+  <h2>Login Form</h2>
+  <form action="login.php" method="post">
+    Username: <input type="text" name="username"><br><br>
+    Password: <input type="password" name="password"><br><br>
+    <input type="submit" value="Login">
+  </form>
+</body>
+</html>
+```
+
+* Save: `Ctrl+O` → `Enter`, exit: `Ctrl+X`.
+
+---
+
+### 4) Create `login.php`
+
+```bash
+sudo nano /var/www/html/testlogin/login.php
+```
+
+* Paste:
+
+```php
+<?php
+$username = $_POST['username'];
+$password = $_POST['password'];
+
+echo "<h2>Login Attempt</h2>";
+echo "Username: " . $username . "<br>";
+echo "Password: " . $password . "<br>";
+?>
+```
+
+* Save and exit.
+
+---
+
+### 5) Test the page in the Kali browser
+
+* In Kali browser (or host if accessible): visit
+  `http://127.0.0.1/testlogin/login.html`
+* Or from terminal:
+
+  ```bash
+  curl http://127.0.0.1/testlogin/login.html
+  ```
+
+---
+
+### 6) Capture using Wireshark (loopback interface)
+
+* In Wireshark select **lo** (loopback) interface (because 127.0.0.1 traffic uses loopback).
+* Click start capture on `lo`.
+
+---
+
+### 7) Apply filter to see POSTs
+
+* In the display filter box enter:
+
+```
+http.request.method == "POST"
+```
+
+* Leave Wireshark running.
+
+---
+
+### 8) Perform login attempt (in browser)
+
+* On the login page enter: **Username:** `admin` and **Password:** `test123` (per lab), then **Submit**.
+
+---
+
+### 9) Find the POST packet and view credentials
+
+* Locate the POST packet in capture (filter above will show it).
+* Right-click the POST packet → **Follow** → **TCP Stream**.
+* In the TCP stream window you will see the HTTP request body; credentials (username/password) will appear in plain text. That proves HTTP sends data unencrypted. 
+
+---
+
+### 10) Save capture (for submission)
+
+* Stop capture → **File → Save As…** → `http_login_capture.pcap`.
+
+---
+
+# Quick troubleshooting (common exam problems)
+
+* **No network traffic when capturing `eth0`**: check VM network is actually `Bridged` and that the adapter is UP inside Kali (`ip a`).
+* **Can't run wireshark (permission denied)**: ensure you used `sudo wireshark` or run `sudo apt install wireshark` and allow non-root capture if prompted.
+* **Loopback capture shows nothing**: ensure you captured on `lo` and that Apache is binding to 127.0.0.1 (default). Use `ss -ltnp | grep :80` to verify.
+* **PHP page shows code instead of executing**: Apache/PHP module not running. Restart Apache: `sudo service apache2 restart` and ensure `php` package installed.
+* **Saved .pcap is empty**: you either captured before generating traffic or used wrong interface — re-run and generate traffic while capture is active.
+
+---
+
+# Short viva answers (memorize these)
+
+1. **Display filter vs Capture filter**
+
+   * *Capture filter* limits what Wireshark records (set before capture).
+   * *Display filter* hides/shows packets in view from the already captured file. 
+
+2. **Why promiscuous mode?**
+
+   * So the NIC accepts all frames, not just those addressed to the host — needed to sniff other hosts’ traffic on the same network. 
+
+3. **TCP three-way handshake in Wireshark**
+
+   * Look for **SYN**, then **SYN, ACK**, then **ACK** flags between the two IPs/ports.
+
+4. **HTTP vs HTTPS packet analysis**
+
+   * HTTP payloads are readable/plaintext; HTTPS (TLS) payloads are encrypted and not readable without keys. 
+
+5. **Can Wireshark decrypt HTTPS?**
+
+   * Only if you have the session keys (e.g., private key for RSA in some older setups, or client pre-master secret / TLS key log), or if you configure the browser to export TLS keys and point Wireshark to them.
+
+6. **Why credentials visible in HTTP but not HTTPS?**
+
+   * HTTP sends form data plaintext; HTTPS encrypts the HTTP message before transport.
+
+7. **Loopback (lo) significance**
+
+   * Captures traffic inside the host/VM (127.0.0.1) — used when server and client are on same machine.
+
+8. **How to identify a POST request**
+
+   * Filter `http.request.method == "POST"` or inspect HTTP request line `POST /... HTTP/1.1`.
+
+9. **GET vs POST difference**
+
+   * GET appends data to URL (visible in query string); POST sends data in message body.
+
+10. **How HTTPS protects against sniffing**
+
+    * TLS encrypts payloads so passive sniffers cannot read the HTTP content without keys. 
+
+---
+
+# Final tips for exam day
+
+* Do the whole sequence once before the exam (start VM, start Wireshark, start Apache, create files, submit form) — practice saves time.
+* Keep a terminal window and Wireshark side-by-side.
+* Save your `.pcap` files with clear names and timestamps.
+* If you break something, revert to a snapshot.
+
+---
+
+If you want, I can:
+
+* Produce a single printable **one-page cheat sheet** with only the exact commands and filters (no extra text), or
+* Export the exact `login.html` and `login.php` files into a downloadable zip so you can drop them into `/var/www/html/testlogin` quickly.
+
+Which would you like me to prepare right away? (I'll produce it now if you want.)
