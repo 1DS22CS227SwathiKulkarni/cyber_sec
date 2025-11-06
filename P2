@@ -1,0 +1,281 @@
+Nice — below is a **clean, exam-ready, step-by-step procedure** you can follow on your **laptop/VM** to do **Lab Program 2 — Acquisition of data using Malware**. I’ll give *exact commands* to copy-paste, where to run them, troubleshooting hints, safety/legal notes, and short viva answers you can memorize. This is based on your uploaded lab sheet. 
+
+---
+
+# Quick prep (what you need)
+
+* A Linux environment (Kali / Ubuntu) — either on your laptop or a VM.
+* Sudo access.
+* Internet for package install (only if not already installed).
+* A harmless image file to use as cover (JPEG).
+* You’ll work inside `~/acq_demo` so nothing else is touched.
+* **Important safety:** perform this only in an isolated lab VM or machine you control. Do not run any code on production or public networks.
+
+---
+
+# 0 — Start: open a terminal and create workspace
+
+```bash
+# create and enter workspace
+mkdir -p ~/acq_demo && cd ~/acq_demo
+pwd   # should show /home/<you>/acq_demo
+```
+
+---
+
+# 1 — Install required tools
+
+(steghide, zip, clamav)
+
+```bash
+sudo apt update
+sudo apt install -y steghide zip unzip clamav
+# optional: install nano if not present
+sudo apt install -y nano
+```
+
+Confirm:
+
+```bash
+which steghide && which zip && clamscan --version
+```
+
+If any command fails, re-run `sudo apt update` and check network.
+
+---
+
+# 2 — Create benign “victim” files
+
+```bash
+mkdir -p ~/acq_demo/victim_docs
+
+# create a secret
+echo "this is a test secret." > ~/acq_demo/victim_docs/secret.txt
+
+# create harmless AV EICAR test file (non-malicious test string)
+echo 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > ~/acq_demo/eicar.com.txt
+
+# verify
+ls -l ~/acq_demo
+cat ~/acq_demo/victim_docs/secret.txt
+```
+
+You should see `this is a test secret.` printed.
+
+---
+
+# 3 — Save the simulate_malware script (exact file)
+
+Create the script file:
+
+```bash
+nano ~/acq_demo/simulate_malware.sh
+```
+
+Paste exactly this content (save & exit):
+
+```bash
+#!/bin/bash
+set -euo pipefail
+echo "[*] script start: $(date)"
+TMPDIR="$(mktemp -d /tmp/exfil.XXXXXX)" || { echo "[!] mktemp failed" >&2; exit 1; }
+echo "[*] TMPDIR=${TMPDIR}"
+trap 'echo "[*] cleaning ${TMPDIR}"; rm -rf "${TMPDIR}"' EXIT
+
+SRC="${HOME}/acq_demo/victim_docs/secret.txt"
+if [ ! -f "${SRC}" ]; then
+  echo "[!] Source file missing: ${SRC}" >&2
+  exit 1
+fi
+
+echo "[*] Found source: ${SRC}"
+cp "${SRC}" "${TMPDIR}/secret.txt"
+echo "[*] copied secret to ${TMPDIR}/secret.txt"
+
+# create encrypted zip (password = pass123)
+zip -j -P pass123 "${TMPDIR}/payload.zip" "${TMPDIR}/secret.txt"
+echo "[*] created zip: ${TMPDIR}/payload.zip"
+
+# copy payload out to stable demo location
+mkdir -p /tmp/exfil
+cp "${TMPDIR}/payload.zip" /tmp/exfil/payload.zip
+echo "[*] copied payload to /tmp/exfil/payload.zip"
+ls -l /tmp/exfil || echo "[!] cannot list /tmp/exfil"
+echo "[*] script end: $(date)"
+```
+
+Make it executable:
+
+```bash
+chmod +x ~/acq_demo/simulate_malware.sh
+```
+
+Run it (normal and debug):
+
+```bash
+# normal run
+bash ~/acq_demo/simulate_malware.sh
+
+# debug run (shows each command)
+bash -x ~/acq_demo/simulate_malware.sh
+```
+
+After run, verify:
+
+```bash
+ls -l /tmp/exfil
+file /tmp/exfil/payload.zip
+```
+
+You should see `payload.zip` in `/tmp/exfil`.
+
+---
+
+# 4 — Prepare a cover image for steghide
+
+If you don’t have a JPEG, grab a sample (lab VM must have Internet):
+
+```bash
+# example: download a sample image into workspace
+wget -O ~/acq_demo/cover1.jpg https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png
+# if it's PNG, convert to JPG (requires imagemagick)
+sudo apt install -y imagemagick
+convert ~/acq_demo/cover1.jpg ~/acq_demo/cover1.jpg
+# confirm a file exists
+ls -l ~/acq_demo/cover1.jpg
+```
+
+(If internet is blocked, copy any local JPEG into `~/acq_demo/cover1.jpg`.)
+
+---
+
+# 5 — Embed the encrypted payload inside the image (steganography)
+
+```bash
+# verify payload
+ls -l /tmp/exfil/payload.zip
+# embed, steghide will ask for passphrase (use 'demo-pass')
+steghide embed -cf ~/acq_demo/cover1.jpg -ef /tmp/exfil/payload.zip -p demo-pass
+# inspect
+steghide info ~/acq_demo/cover1.jpg
+# when prompted confirm with 'y' and enter demo-pass
+```
+
+`steghide` will embed the zip into the JPEG without altering visible image much.
+
+---
+
+# 6 — Conceal the stego-image and demonstrate extraction
+
+```bash
+# hide it in a "hidden" folder
+mkdir -p ~/.hidden_store
+mv ~/acq_demo/cover1.jpg ~/.hidden_store/.cover1.jpg
+ls -la ~/.hidden_store
+```
+
+Extract the embedded payload:
+
+```bash
+# extract (steghide passphrase demo-pass), -xf specifies output filename
+steghide extract -sf ~/.hidden_store/.cover1.jpg -p demo-pass -xf /tmp/recovered_payload.zip
+
+# verify recovered zip
+ls -l /tmp/recovered_payload.zip
+
+# unzip with the payload password 'pass123' (from script)
+unzip -P pass123 /tmp/recovered_payload.zip -d /tmp/recovered_payload
+
+# show secret
+cat /tmp/recovered_payload/secret.txt
+```
+
+You should see `this is a test secret.` — that proves secret exfiltrated via stego + encrypted archive.
+
+---
+
+# 7 — Clean up (important)
+
+```bash
+# remove temp artifacts
+rm -rf ~/acq_demo
+rm -rf /tmp/exfil /tmp/recovered_payload /tmp/exfil.*
+rm -f /tmp/recovered_payload.zip
+rm -rf ~/.hidden_store
+```
+
+(Or keep files if instructor asks to submit them.)
+
+---
+
+# Troubleshooting (quick)
+
+* `steghide: command not found` → `sudo apt install steghide`.
+* `payload.zip` missing after script → run script in debug (`bash -x ...`) to see failing line.
+* `steghide extract` fails with "no data" → wrong image or embedding failed; re-run embed and use correct passphrase.
+* `unzip` says wrong password → use `unzip -P pass123` exactly, or check that payload.zip is the correct file.
+* If `wget` fails to download, copy a local JPEG into `~/acq_demo/cover1.jpg`.
+
+---
+
+# Safety & Ethics (say this in viva)
+
+* Always work inside an **isolated VM** or an air-gapped machine.
+* Never run malware code against systems you don’t own or networks that are public.
+* Use only harmless test strings (EICAR) and encrypted payloads with known passwords.
+* Document what you did and have instructor permission for experiments.
+
+---
+
+# Short viva Q&A (memorize — brief answers)
+
+1. **Why zip + password then steghide?**
+
+   * Double concealment: zip password protects payload confidentiality; steghide hides the existence of the payload.
+
+2. **What is EICAR?**
+
+   * A harmless test string used to verify antivirus detection, not real malware.
+
+3. **How does steganography differ from encryption?**
+
+   * Encryption hides *content* (scrambled); steganography hides *existence* (concealed in a carrier).
+
+4. **Why use `/tmp` and a temp dir in the script?**
+
+   * Simulates staging/exfiltration and reduces footprint on persistent storage; temp dir auto-cleaning is safer.
+
+5. **What risks exist if malware escapes the lab?**
+
+   * Data loss, unauthorized access, legal prosecution, harm to other systems.
+
+6. **How to detect such exfiltration in real systems?**
+
+   * Monitor unusual outbound traffic, file integrity checks, use DLP and IDS/IPS, scan for large or frequent stego images.
+
+7. **Why password-protect during experiments?**
+
+   * Prevent accidental disclosure and ensure only authorized recovery in the lab.
+
+8. **If extraction fails, what’s first step?**
+
+   * Re-check passphrases, confirm the stego image is the one you embedded into, run `steghide info` to see if data is present.
+
+9. **How to ensure experiment is safe?**
+
+   * Use snapshots, work offline, restrict VM networking, and wipe VM after test if needed.
+
+10. **What legal/ethical requirement should you mention?**
+
+    * Always have written permission; follow your institution’s rules and applicable laws.
+
+(These are pulled/derived from your lab sheet.) 
+
+---
+
+If you want I can:
+
+* produce a **one-page cheat sheet** (commands only), or
+* create the exact files (`simulate_malware.sh`, `login.html` etc.) in a downloadable zip you can transfer to your VM.
+
+Which one should I generate right now?
