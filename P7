@@ -1,0 +1,191 @@
+Nice — below is a focused, **exam-ready, step-by-step guide** you can follow on your **laptop (Windows or a Linux VM)** to complete **Lab Program 7 — Compare It (file comparison for forensic investigation)**. I include exact clicks/commands, quick troubleshooting, what to save for submission, and short viva answers. (This follows your uploaded lab sheet.) 
+
+---
+
+# Quick checklist before you start
+
+* Decide platform you’ll use for the lab: **Windows (native)** or **Linux VM (Kali/Ubuntu)**.
+* Have two sample text files ready (e.g., `file1.txt` and `file2.txt`).
+* If using Windows and you want the original tool, you’ll download **Compare It** from GrigSoft. Otherwise use Linux alternatives (`meld`, `vimdiff`, `diff`, `cmp`). 
+
+---
+
+# Option A — Windows (use **Compare It** — closest to lab sheet)
+
+1. Download & install:
+
+   * Open browser → go to `http://www.grigsoft.com/wincmp3.htm`.
+   * Click **Compare It Tool** download link and run installer. (Installer ~1.7 MB).
+   * Follow installer prompts to install.
+
+2. Create two text files:
+
+   * Open Notepad → type some text → **File → Save As** → `C:\lab\file1.txt`.
+   * Repeat for `file2.txt` with small differences.
+
+3. Open Compare It:
+
+   * Start Menu → **Compare It**.
+   * App shows two panes: Left and Right.
+
+4. Load files:
+
+   * Click left pane **Open** → choose `file1.txt`.
+   * Click right pane **Open** → choose `file2.txt`.
+
+5. Inspect differences:
+
+   * Files display side-by-side with colored highlights for changes.
+   * Use toolbar buttons or keyboard shortcuts to jump between changes, copy differences from one file to the other, or edit inline.
+
+6. Create/print a differences report:
+
+   * **File → Print Preview** (or **File → Print**) to generate colored printout of differences exactly as on screen.
+   * Save as PDF via “Print to PDF” if required for submission.
+
+7. Save any merged/edited file (if you applied changes):
+
+   * **File → Save Left/Save Right** as needed.
+
+8. Evidence to submit:
+
+   * `file1.txt`, `file2.txt`, screenshot of Compare It showing colored diffs, exported/printed PDF of diff report. 
+
+---
+
+# Option B — Linux (Kali/Ubuntu) — CLI + GUI alternatives (recommended if you use VM)
+
+If you work in Kali/Ubuntu (VM), use these tools — they replicate Compare It functionality.
+
+## Create two sample files
+
+Open terminal and run:
+
+```bash
+mkdir -p ~/compare_lab
+cd ~/compare_lab
+cat > file1.txt <<'EOF'
+This is line one.
+This is line two.
+This line is unique to file1.
+EOF
+
+cat > file2.txt <<'EOF'
+This is line one.
+This is line 2.  # small edit
+This line is new in file2.
+EOF
+```
+
+## 1) Quick CLI diff (line-by-line)
+
+```bash
+diff file1.txt file2.txt
+# For unified diff (nice for reports):
+diff -u file1.txt file2.txt > diff_report.txt
+```
+
+* `diff` shows lines with `<` (file1) and `>` (file2).
+* Save `diff_report.txt` for submission. 
+
+## 2) Byte-level comparison with `cmp`
+
+```bash
+cmp -l file1.txt file2.txt > cmp_report.txt
+```
+
+* `cmp -l` prints byte offsets and differing bytes — useful for binary-level forensic evidence. 
+
+## 3) Side-by-side colored GUI: `vimdiff`
+
+```bash
+vimdiff file1.txt file2.txt
+```
+
+* Navigation: `]c` → next change, `[c` → previous change.
+* Quit both: `:qa!`
+* Use screenshots for evidence.
+
+## 4) GUI tool (closest to Compare It): **meld**
+
+Install & run:
+
+```bash
+sudo apt update
+sudo apt install -y meld
+meld file1.txt file2.txt &
+```
+
+* Meld shows side-by-side colored highlights, allows editing, copying blocks between files, and saving.
+* You can **File → Save As** or **File → Print** (or print to PDF) to include a colored report with differences. 
+
+---
+
+# What to include in your lab submission (minimal set)
+
+* `file1.txt` and `file2.txt` (original files).
+* `diff_report.txt` (output of `diff -u`).
+* `cmp_report.txt` (output of `cmp -l`, optional for byte-level).
+* One or more screenshots showing side-by-side colored differences (Compare It or Meld or Vimdiff).
+* Short notes: commands you ran and the tools used.
+
+---
+
+# Troubleshooting (common issues & fixes)
+
+* **Compare It installer won’t run on Windows 10/11**: right-click → Run as administrator, or use compatibility mode.
+* **Meld not installed / apt errors**: run `sudo apt update` then `sudo apt install -y meld`. If behind a proxy, ensure proxy settings.
+* **vimdiff colors look weird**: ensure your terminal supports colors, or open in a GUI Vim (gvim) or use `meld`.
+* **diff output hard to read**: use `diff -u` for unified format, or open `diff_report.txt` in an editor for printing. 
+
+---
+
+# Viva-friendly short answers (memorize)
+
+* **Q: What does `diff` show?**
+  A: Line-level differences; `<` = line from first file, `>` = line from second file.
+
+* **Q: What is `cmp` used for?**
+  A: Byte-level comparison; shows exact byte offsets and differing bytes — useful in forensics to detect binary tampering.
+
+* **Q: Why use `vimdiff` or `meld` instead of plain `diff`?**
+  A: They provide side-by-side colored views and let you edit/merge differences interactively (similar to Compare It).
+
+* **Q: What evidence should be submitted for a forensic comparison?**
+  A: Original files, diff output (unified format), byte-level comparison results, and screenshots of visual comparison tool with timestamps. 
+
+---
+
+# Quick one-page cheat sheet (commands only — copy into terminal)
+
+```bash
+# workspace
+mkdir -p ~/compare_lab && cd ~/compare_lab
+
+# create samples
+nano file1.txt   # edit & save
+nano file2.txt
+
+# line diff + save
+diff -u file1.txt file2.txt > diff_report.txt
+
+# byte-level cmp
+cmp -l file1.txt file2.txt > cmp_report.txt
+
+# visual in terminal
+vimdiff file1.txt file2.txt
+
+# GUI (Kali/Ubuntu)
+sudo apt update
+sudo apt install -y meld
+meld file1.txt file2.txt &
+```
+
+---
+
+If you want I can now:
+
+* generate a **printable one-page PDF** (commands + checklist + viva Qs), or
+* produce the two sample files plus `diff_report.txt` and `cmp_report.txt` in a zip you can download and submit.
+
+Which would help you most for the exam?
